@@ -1,0 +1,49 @@
+{
+    "black-formatter.importStrategy": "fromEnvironment",
+    "cSpell.language": "en",
+    "cSpell.diagnosticLevel": "Hint",
+    "cSpell.userWords": [
+        "pytest",
+        "pylint"
+    ],
+    "diffEditor.ignoreTrimWhitespace": false,
+    "git.branchProtection": [
+        "master"
+    ],
+    "git.fetchOnPull": true,
+    "git.rebaseWhenSync": true,
+    "mypy-type-checker.args": [],
+    "mypy-type-checker.importStrategy": "fromEnvironment",
+    "pylint.importStrategy": "fromEnvironment",
+    "[python]": {
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.formatOnType": true,
+        "editor.wordBasedSuggestions": "off",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports.ruff": "always"
+        },
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.rulers": [
+            88
+        ]
+    },
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.testing.pytestArgs": [
+        "unittests",
+        "--ignore=functional_tests"
+    ],
+    "python.testing.pytestEnabled": true,
+    "ruff.codeAction.disableRuleComment": {
+        "enable": false
+    },
+    "ruff.importStrategy": "fromEnvironment",
+    "workbench.startupEditor": "none",
+    "python.languageServer": "Pylance",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    // "editor.codeActionsOnSave": {
+    //     "source.organizeImports": true,
+    //     "source.fixAll": true
+    // }
+    
+}
