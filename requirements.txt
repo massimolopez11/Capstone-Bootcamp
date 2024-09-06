@@ -45,6 +45,7 @@ referencing==0.35.1
 requests==2.32.3
 rich==13.8.0
 rpds-py==0.20.0
+ruff==0.6.4
 scikit-learn==1.5.1
 scipy==1.14.1
 six==1.16.0
