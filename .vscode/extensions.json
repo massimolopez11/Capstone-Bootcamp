@@ -1,0 +1,14 @@
+{
+    "recommendations": [
+        "charliermarsh.ruff",
+        "donjayamanne.githistory",
+        "EditorConfig.EditorConfig",
+        "mhutchie.git-graph",
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-python.mypy-type-checker",
+        "ms-python.pylint",
+        "ms-vsliveshare.vsliveshare",
+        "streetsidesoftware.code-spell-checker"
+    ]
+}
