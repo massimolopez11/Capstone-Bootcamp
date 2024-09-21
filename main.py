@@ -1,13 +1,12 @@
 """Main Driver"""
 
+import logging
 import os
 import zipfile
 
 import streamlit as st
 
 import tools
-
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ else:
     images = st.file_uploader(
         label="Please upload a zip folder containing your images",
         type=["PNG", "JPEG", "JPG"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
     )
 
     if images is not None:
