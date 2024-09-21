@@ -19,7 +19,7 @@
 				"docker-build"
 			],
 			"python": {
-				"file": "main.py"
+				"postAttachCommand": "streamlit run main.py"
 			}
 		}
 	]

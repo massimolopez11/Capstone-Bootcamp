@@ -1,19 +1,21 @@
 {
     "configurations": [
         {
-            "name": "Docker: Python - General",
-            "type": "docker",
+            "name": "debug streamlit",
+            "type": "python",
             "request": "launch",
-            "preLaunchTask": "docker-run: debug",
-            "python": {
-                "pathMappings": [
-                    {
-                        "localRoot": "${workspaceFolder}",
-                        "remoteRoot": "/app"
-                    }
-                ],
-                "projectType": "general"
+            "module": "streamlit",
+            "env": {
+                "STREAMLIT_APP": "main.py",
+                "STREAMLIT_ENV": "development",
+                "AWS_PROFILE": "mega_root",
+                "PYTHONPATH": "${workspaceRoot}/",
+            },
+            "args": [
+                "run",
+                "main.py"
+            ],
+            "jinja": true
             }
-        }
     ]
 }

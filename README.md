@@ -1,6 +1,7 @@
 # Capstone-Bootcamp
 
 ## Description
+FamilyFaces is a streamlit web-app for uploading images and classifying human faces from a set of pictures. You can view the website at https://familyfaces.streamlit.app/.
 
 ## Setup for Development
 The setup process can be sone locally, or the process can be done using a dev container. Either way works but it is easier to setup if you have WSL and Docker installed
