@@ -58,5 +58,5 @@ else:
 ai_button_pressed = st.button(label="Start Image Recognition")
 
 if ai_button_pressed:
-    # TODO: fit the model here.
+    # Fit the model here.
     pass
