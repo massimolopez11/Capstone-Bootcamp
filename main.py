@@ -1,7 +1,5 @@
 """Main Driver"""
 
-from data_model import DataModels
-
 import logging
 import os
 import zipfile
@@ -9,6 +7,7 @@ import zipfile
 import streamlit as st
 
 import tools
+from data_model import DataModels
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
