@@ -7,11 +7,12 @@ import zipfile
 import streamlit as st
 
 import tools
+from data_model import DataModels
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Check for images folder. If not create one
+# Check for images folder to save images. If not create one.
 try:
     os.mkdir("images")
     logger.debug("New directory called `images`")
@@ -59,4 +60,4 @@ ai_button_pressed = st.button(label="Start Image Recognition")
 
 if ai_button_pressed:
     # Fit the model here.
-    pass
+    dm = DataModels()
