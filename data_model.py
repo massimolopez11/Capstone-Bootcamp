@@ -33,3 +33,7 @@ class DataModels:
         # Close the images once done
         for image in images_list:
             image.close()
+
+    def display_attributes(self) -> None:
+        """Helper method to print out attributes."""
+        print(self.photo_df, self.image_vectors)
