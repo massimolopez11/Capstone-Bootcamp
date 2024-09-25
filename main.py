@@ -61,3 +61,4 @@ ai_button_pressed = st.button(label="Start Image Recognition")
 if ai_button_pressed:
     # Fit the model here.
     dm = DataModels()
+    dm.display_attributes()
