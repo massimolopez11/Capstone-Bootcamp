@@ -9,7 +9,7 @@
                 "STREAMLIT_APP": "main.py",
                 "STREAMLIT_ENV": "development",
                 "AWS_PROFILE": "mega_root",
-                "PYTHONPATH": "${workspaceRoot}/",
+                "PYTHONPATH": "${workspaceRoot}/"
             },
             "args": [
                 "run",

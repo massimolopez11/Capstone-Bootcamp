@@ -1,1 +1,0 @@
-img2vec_pytorch==1.0.1
