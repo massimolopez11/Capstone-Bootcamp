@@ -11,12 +11,19 @@ import numpy as np
 from img2vec_pytorch import Img2Vec
 from PIL import Image
 from sklearn.cluster import DBSCAN
-from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 
 # from facenet_pytorch import InceptionResnetV1
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+LAST_DBSCAN_MODEL: DBSCAN = None
+"""The last dbscan model used. Object is stored for prediction"""
+
+LAST_KNN_MODEL: KNeighborsClassifier = None
+"""The last knn model used. Object is stored for prediction"""
 
 
 class DataModels:
@@ -25,6 +32,9 @@ class DataModels:
     def __init__(self) -> None:
         """Initialize a new data model consisting of a dataframe of images"""
         self.image_array = np.array(glob.glob("images/**/*.*", recursive=True))
+        self.image_temp_array = np.array(
+            glob.glob("images_temp/**/*.*", recursive=True)
+        )
         self.faces_array = (
             np.array(glob.glob("faces/images/**/*.*", recursive=True))
             if os.path.isdir("faces")
@@ -32,7 +42,7 @@ class DataModels:
         )
         self.faces_vectors_x = np.empty(0)
 
-        self.dbscan:DBSCAN = None
+        self.dbscan: DBSCAN = None
         self.clusters = np.empty(0)
 
     def tokenize(self, batch_size=100) -> None:
@@ -61,8 +71,86 @@ class DataModels:
 
         # self.faces_vectors = np.concatenate(self.faces_vectors, axis=0)
 
-    def generate_faces(self) -> None:
-        """Generate the faces from the photo_df"""
+    def generate_faces_dnn(
+        self, use_image_temp=False, confidence_threshold=0.5
+    ) -> None:
+        """Generate the faces from the image or the image_temp numpy arrays."""
+
+        # Empty the faces directory
+        if os.path.isdir("faces"):
+            shutil.rmtree("faces")
+            os.makedirs("faces")
+        else:
+            os.makedirs("faces")
+
+        # Setup dnn
+        # NOTE: These are pretrained models curtosy of OpenCV
+        # https://github.com/keyurr2/face-detection/blob/master/deploy.prototxt.txt
+        # https://github.com/keyurr2/face-detection/blob/master/face_detection_cnn.py
+
+        face_dnn = cv2.dnn.readNetFromCaffe(
+            "deploy.prototxt.txt", "res10_300x300_ssd_iter_140000.caffemodel"
+        )
+
+        for value in self.image_array if not use_image_temp else self.image_temp_array:
+            filename: str = value.replace("\\", "/")
+            filename_no_ext = filename[: filename.find(".")]
+            print(filename)
+
+            # Detect image
+            img = cv2.imread(filename)
+
+            # Get the width and height of the input image
+            (h, w) = img.shape[:2]
+
+            # Prepare the image as input for the DNN (300x300, mean subtraction, scale factor)
+            blob = cv2.dnn.blobFromImage(
+                cv2.resize(img, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
+            )
+
+            # Set the input to the network
+            face_dnn.setInput(blob)
+
+            # Forward pass: detect faces
+            detections = face_dnn.forward()
+
+            # Loop over the detections
+            for i in range(0, detections.shape[2]):
+                # Extract the confidence (probability) of the detection
+                confidence = detections[0, 0, i, 2]
+
+                # Filter out weak detections
+                if confidence > confidence_threshold:
+                    # Get the bounding box coordinates
+                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                    (startX, startY, endX, endY) = box.astype("int")
+
+                    # Ensure the bounding boxes fall within the dimensions of the frame
+                    startX = max(0, startX)
+                    startY = max(0, startY)
+                    endX = min(w, endX)
+                    endY = min(h, endY)
+
+                    # Extract the face region (ROI: Region of Interest)
+                    face = img[startY:endY, startX:endX]
+
+                    if not os.path.isdir(f"faces/{filename_no_ext}"):
+                        os.makedirs(f"faces/{filename_no_ext}")
+
+                    # Save the face as a new image
+                    face_filename = f"faces/{filename_no_ext}/face_{i+1}.jpg"
+                    cv2.imwrite(face_filename, face)
+                    print(f"Saved face {i+1} at {face_filename}")
+
+        # Create an array for all the images in the faces directory
+        self.faces_array = (
+            np.array(glob.glob("faces/images/**/*.*", recursive=True))
+            if not use_image_temp
+            else np.array(glob.glob("faces/images_temp/**/*.*", recursive=True))
+        )
+
+    def generate_faces_haar_classifier(self, use_image_temp=False) -> None:
+        """Generate the faces from the image or the image_temp numpy arrays."""
 
         # Empty the faces directory
         if os.path.isdir("faces"):
@@ -75,17 +163,17 @@ class DataModels:
         face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
-
-        for value in self.image_array:
+        for value in self.image_array if not use_image_temp else self.image_temp_array:
             filename: str = value.replace("\\", "/")
             filename_no_ext = filename[: filename.find(".")]
             print(filename)
 
             # Detect the faces using grayscale images
             img = cv2.imread(filename)
+
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=4, minSize=(50, 50)
+                gray, scaleFactor=1.05, minNeighbors=5, minSize=(100, 100)
             )
 
             # For each face, save them in their respective file
@@ -105,9 +193,13 @@ class DataModels:
                 print(f"Saved face {i+1} at {face_filename}")
 
         # Create an array for all the images in the faces directory
-        self.faces_array = np.array(glob.glob("faces/images/**/*.*", recursive=True))
+        self.faces_array = (
+            np.array(glob.glob("faces/images/**/*.*", recursive=True))
+            if not use_image_temp
+            else np.array(glob.glob("faces/images_temp/**/*.*", recursive=True))
+        )
 
-    def plot_k_distance(self, min_samples=3) -> plt.Figure:
+    def plot_k_distance(self, min_samples) -> tuple[plt.Figure, float]:
         """Plot the k distance elbow plot for analysis"""
         # Compute the k-nearest neighbors
         nearest_neighbors = NearestNeighbors(n_neighbors=min_samples)
@@ -118,22 +210,85 @@ class DataModels:
         distances = np.sort(
             distances[:, -1]
         )  # Get the k-th nearest neighbor distance for each point
+
+        # Get the elbow point
+        elbow_point_x, elbow_point_y = self._elbow_point(distances)
+
         fig = plt.figure(figsize=(8, 8))
 
         plt.plot(distances)
+        plt.axvline(
+            x=elbow_point_x,
+            color="red",
+            linestyle="--",
+            label=f"Elbow point: {elbow_point_x}",
+        )
+        plt.axhline(
+            y=elbow_point_y,
+            color="green",
+            linestyle="--",
+            label=f"Elbow point: {elbow_point_y}",
+        )
+        plt.annotate(
+            # text='({0:.2d}, {0:.2f})'.format(elbow_point_x, elbow_point_y),
+            text=f"({elbow_point_x, elbow_point_y})",
+            xy=(elbow_point_x, elbow_point_y),
+        )
         plt.ylabel("k-distance")
         plt.xlabel("Data points (sorted by distance)")
-        plt.title("K-distance plot for DBSCAN")
+        plt.title(f"K-distance plot for DBSCAN (Min Samples = {min_samples})")
 
-        return fig
+        return (fig, elbow_point_y)
 
-    def dbscan_model(self):
-        """Generate DBSCAN clustering model"""
-        self.dbscan = DBSCAN(eps=6.3, min_samples=3, metric="euclidean")
+    def _elbow_point(self, distances: np.ndarray) -> int:
+        """Find the index of the elbow point using the maximum curvature method."""
+        # Get the total number of points
+        num_points = len(distances)
+
+        # Create a line from the first point to the last point
+        start_point = np.array([0, distances[0]])
+        end_point = np.array([num_points - 1, distances[-1]])
+
+        # Create a vector representing the line
+        line_vec = end_point - start_point
+
+        # Compute the distance of each point from the line
+        distances_to_line = []
+        for i in range(num_points):
+            point = np.array([i, distances[i]])
+            vec_from_start = point - start_point
+            distance = np.linalg.norm(
+                np.cross(line_vec, vec_from_start)
+            ) / np.linalg.norm(line_vec)
+            distances_to_line.append(distance)
+
+        # Find the point with the maximum distance to the line (the elbow point)
+        elbow_point = np.argmax(distances_to_line)
+        print(elbow_point, distances[elbow_point])
+
+        return (elbow_point, distances[elbow_point])
+
+    def dbscan_model(self, eps: float, min_samples, use_knn=False):
+        """Generate DBSCAN clustering model
+
+        Args:
+            eps: Distance to nearest cluster needed to generate dbscan model. This value
+              would come from the elbow point in the plot_k_distance method. I choose 
+              later to sutract this value by 2 since it gave better results.
+            min_samples: number of min samples needed to generate dbscan model.
+            use_knn: Optional if you datasets has too many outliers then use this.
+                After generating the dbscan it uses the knn model to find the closests
+                neighbours for any outliers. Defaults to False since allowing outliers
+                can produce more errors.
+        """
+        print(f"Using esp and min sample values of ({eps, min_samples})")
+
+        self.dbscan = DBSCAN(eps=eps-2, min_samples=min_samples, metric="euclidean")
         self.clusters = self.dbscan.fit_predict(self.faces_vectors_x)
+
         print(len(set(self.clusters)))
 
-        # Output cluster labels (-1 indicates noise/outliers, 0, 1, 2... are cluster labels)
+        # Output cluster labels (-1 indicates noise/outliers))
         print("Cluster labels for each face:", self.clusters)
 
         # You can group the faces by their cluster labels
@@ -146,16 +301,91 @@ class DataModels:
                 if label not in clustered_faces:
                     clustered_faces[label] = []
                 clustered_faces[label].append(self.faces_vectors_x[i])
-                print(f"({self.faces_array[i]}) Face {i+1} is Person {label}")
+                # print(f"({self.faces_array[i]}) Face {i+1} is Person {label}")
                 not_noise_num += 1
             else:
-                print(f"({self.faces_array[i]}) Face {i+1} identified as noise/outlier")
+                # print(f"({self.faces_array[i]}) Face {i+1} identified as noise/outlier")
                 noise_num += 1
 
         print(
             f"Found {len(set(self.clusters)) - (1 if -1 in self.clusters else 0)} clusters"
         )
-        print(f"Ratio not noise to noise = {not_noise_num/(not_noise_num + noise_num)}")
+        print(
+            f"Ratio of outliers = {not_noise_num/(not_noise_num + noise_num)} \
+                  ({not_noise_num}/{(not_noise_num + noise_num)})"
+        )
+
+        # Since there may be lots of outliers, use KNN to classify them into existing
+        # clusters by setting use_knn = True
+        if use_knn:
+            non_noise_indices = self.clusters != -1
+            X_non_noise = self.faces_vectors_x[non_noise_indices]
+            labels_non_noise = self.clusters[non_noise_indices]
+
+            # Train KNN on the non-noise points
+            knn = KNeighborsClassifier(n_neighbors=5)
+            knn.fit(X_non_noise, labels_non_noise)
+
+            # Classify the noise points
+            noise_indices = self.clusters == -1
+            X_noise = self.faces_vectors_x[noise_indices]
+            predicted_labels = knn.predict(X_noise)
+
+            # Update the labels for the noise points
+            self.clusters[noise_indices] = predicted_labels
+            print("Final cluster labels (after handling noise):", self.clusters)
+
+            noise_num = 0
+            not_noise_num = 0
+            clustered_faces: dict = {}
+            for i, label in enumerate(self.clusters):
+                if label != -1:  # Ignore noise/outliers
+                    if label not in clustered_faces:
+                        clustered_faces[label] = []
+                    clustered_faces[label].append(self.faces_vectors_x[i])
+                    print(f"({self.faces_array[i]}) Face {i+1} is Person {label}")
+                    not_noise_num += 1
+                else:
+                    print(
+                        f"({self.faces_array[i]}) Face {i+1} identified as noise/outlier"
+                    )
+                    noise_num += 1
+
+            print(
+                f"Found {len(set(self.clusters)) - (1 if -1 in self.clusters else 0)} clusters"
+            )
+            print(
+                f"Ratio of outliers = {not_noise_num/(not_noise_num + noise_num)} \
+                    ({not_noise_num}/{(not_noise_num + noise_num)})"
+            )
+
+    def predict(self, dbscan_model: DBSCAN):
+        """Only used for predicting the model. Note that the model has to be set
+        up or else the function will naturally throw an error.
+        """
+        eps: float = dbscan_model.eps
+
+        # Nearest neighbors based on the core points
+        neighbors = NearestNeighbors(radius=eps)
+        neighbors.fit(dbscan_model.components_)
+
+        # Find the nearest core point for each new point
+        distances, indices = neighbors.radius_neighbors(self.faces_vectors_x)
+
+        # Create an array to store predicted labels
+        predictions = np.full(
+            self.faces_vectors_x.shape[0], -1
+        )  # Default to noise (-1)
+
+        for i, (dist, idx) in enumerate(zip(distances, indices)):
+            if len(idx) > 0:  # If there are neighbors within eps
+                # Assign the label of the nearest core sample
+                predictions[i] = dbscan_model.labels_[
+                    dbscan_model.core_sample_indices_[idx[0]]
+                ]
+
+        self.clusters = predictions
+        return predictions
 
     def group_faces(self):
         """Creates the file tree for the clusters for streamlit to display clusters."""
@@ -167,7 +397,7 @@ class DataModels:
             os.makedirs(output_dir)
 
         # Create directories for each cluster and save the faces into the corresponding folders
-        for (face_image, label) in zip(list(self.faces_array), self.clusters):
+        for face_image, label in zip(list(self.faces_array), self.clusters):
             # Create a folder for each cluster label
             cluster_folder = os.path.join(output_dir, f"cluster_{label}")
 

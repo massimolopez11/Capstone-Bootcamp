@@ -163,6 +163,7 @@ cython_debug/
 
 # Images
 images
+images_temp
 faces
 clustered_faces
 testing.ipynb
