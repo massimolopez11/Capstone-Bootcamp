@@ -8,7 +8,6 @@ import shutil
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from img2vec_pytorch import Img2Vec
 from PIL import Image
 from sklearn.cluster import DBSCAN
@@ -32,6 +31,9 @@ class DataModels:
             else np.empty(0)
         )
         self.faces_vectors_x = np.empty(0)
+
+        self.dbscan:DBSCAN = None
+        self.clusters = np.empty(0)
 
     def tokenize(self, batch_size=100) -> None:
         """Tokenize the images"""
@@ -110,7 +112,7 @@ class DataModels:
         # Compute the k-nearest neighbors
         nearest_neighbors = NearestNeighbors(n_neighbors=min_samples)
         neighbors = nearest_neighbors.fit(self.faces_vectors_x)
-        distances, indices = neighbors.kneighbors(self.faces_vectors_x)
+        distances, _ = neighbors.kneighbors(self.faces_vectors_x)
 
         # Sort the distances and plot the k-distance graph
         distances = np.sort(
@@ -165,9 +167,7 @@ class DataModels:
             os.makedirs(output_dir)
 
         # Create directories for each cluster and save the faces into the corresponding folders
-        for idx, (face_image, label) in enumerate(
-            zip([file for file in self.faces_array], self.clusters)
-        ):
+        for (face_image, label) in zip(list(self.faces_array), self.clusters):
             # Create a folder for each cluster label
             cluster_folder = os.path.join(output_dir, f"cluster_{label}")
 
