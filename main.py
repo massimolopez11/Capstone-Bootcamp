@@ -9,7 +9,7 @@ import streamlit as st
 from PIL import Image
 
 import tools
-from data_model import DataModels
+from data_model import DataModels, LAST_DBSCAN_MODEL, LAST_KNN_MODEL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +20,23 @@ try:
     logger.debug("New directory called `images`")
 except FileExistsError as e:
     logger.debug("%s: `images`", e.strerror)
+
+# Empty the faces directory
+CLUSTER_DIR = "clustered_faces"
+if os.path.isdir(CLUSTER_DIR):
+    shutil.rmtree(CLUSTER_DIR)
+    os.makedirs(CLUSTER_DIR)
+else:
+    os.makedirs(CLUSTER_DIR)
+
+
+# Empty the temp images directory
+IMG_TEMP_DIR = "images_temp"
+if os.path.isdir(IMG_TEMP_DIR):
+    shutil.rmtree(IMG_TEMP_DIR)
+    os.makedirs(IMG_TEMP_DIR)
+else:
+    os.makedirs(IMG_TEMP_DIR)
 
 
 st.write(
@@ -40,9 +57,14 @@ if in_zipfile_mode:
     if image_zip is not None:
         with zipfile.ZipFile(image_zip, "r") as zip_ref:
             zip_ref.extractall("images/.")
+            zip_ref.extractall("images_temp/.")
 
     # Check if all files are images and remove invalid file types
     for dirpath, _, files in os.walk("images/"):
+        for filename in files:
+            if not tools.is_valid_image(f"{dirpath}/{filename}"):
+                os.remove(f"{dirpath}/{filename}")
+    for dirpath, _, files in os.walk("images_temp/"):
         for filename in files:
             if not tools.is_valid_image(f"{dirpath}/{filename}"):
                 os.remove(f"{dirpath}/{filename}")
@@ -57,6 +79,10 @@ else:
         for image in images:
             with open(os.path.join("images/", image.name), "wb") as f:
                 f.write(image.getbuffer())
+    if images is not None:
+        for image in images:
+            with open(os.path.join("images_temp/", image.name), "wb") as f:
+                f.write(image.getbuffer())
 
 
 predict_button = st.button(label="Start Image Recognition")
@@ -66,9 +92,66 @@ train_button = st.button(
         pretrained model saved, If you would like to make your own feel free.",
 )
 
+# 1. Create the object
+dm = DataModels()
+print(dm)
+
 if predict_button:
     # Use this only for prediction
-    print("LOOOOL")
+    print("Training the model.")
+
+    # Empty the faces directory if its already there
+    if os.path.isdir("clustered_faces"):
+        shutil.rmtree("clustered_faces")
+        os.makedirs("clustered_faces")
+    else:
+        os.makedirs("clustered_faces")
+    
+    # 2. Generate the faces
+    with st.spinner("Generating faces from images..."):
+        dm.generate_faces(use_image_temp=True)
+
+    # 3. Create the image embeddings for each face
+    with st.spinner("Creating the image embeddings from each face..."):
+        dm.tokenize()
+        print("Final Result")
+        print(dm.faces_vectors_x)
+
+    # 5.2 Predict Clusters
+    with st.spinner("Predicting labels from DBSCAN clustering model..."):
+        print(f'Predictions: {dm.predict(st.session_state.dbscan_model)}')
+
+    # 6. Create File tree for clusters
+    with st.spinner("Creating file tree to group similar faces"):
+        dm.group_faces()
+
+    # 7. Output the final results (clusters) to streamlit
+    # List all cluster folders in the directory
+    clusters = [
+        folder
+        for folder in os.listdir(CLUSTER_DIR)
+        if os.path.isdir(os.path.join(CLUSTER_DIR, folder))
+    ]
+
+    # Display each cluster
+    for cluster in clusters:
+        st.header(f"Cluster: {cluster}")
+
+        # Get all images in this cluster
+        cluster_folder = os.path.join(CLUSTER_DIR, cluster)
+        faces = list(os.listdir(cluster_folder))
+
+        # Display images in this cluster
+        cols = st.columns(
+            5
+        )  # Adjust the number of columns based on how many images you want per row
+        for idx, image_file in enumerate(faces):
+            image_path = os.path.join(cluster_folder, image_file)
+            img = Image.open(image_path)
+
+            # Display image in a column
+            with cols[idx % 5]:  # This ensures 5 images per row
+                st.image(img, caption=image_file, use_column_width=True)
 
 if train_button:
     # Use this to train the model and predict the images
@@ -81,14 +164,9 @@ if train_button:
     else:
         os.makedirs("clustered_faces")
 
-    # 1. Create the model
-    with st.spinner("Initializing object from images..."):
-        dm = DataModels()
-        print(dm)
-
-    # # 2. Generate the faces
-    # with st.spinner("Generating faces from images..."):
-    #     dm.generate_faces()
+    # 2. Generate the faces
+    with st.spinner("Generating faces from images..."):
+        dm.generate_faces()
 
     # 3. Create the image embeddings for each face
     with st.spinner("Creating the image embeddings from each face..."):
@@ -98,19 +176,20 @@ if train_button:
 
     # 4. Plot the elbow plot for analysis
     with st.spinner("Plotting the elbow plot for analysis..."):
-        st.pyplot(dm.plot_k_distance())
+        min_samples = 2
+        figure, eps = dm.plot_k_distance(min_samples)
+        st.pyplot(figure)
 
-    # 5. Generate DBSCAN
+    # 5.1 Generate DBSCAN
     with st.spinner("Generating DBSCAN clustering model for grouping similar faces"):
-        dm.dbscan_model()
+        dm.dbscan_model(eps, min_samples)
+        st.session_state.dbscan_model = dm.dbscan
 
     # 6. Create File tree for clusters
     with st.spinner("Creating file tree to group similar faces"):
         dm.group_faces()
 
     # 7. Output the final results (clusters) to streamlit
-    CLUSTER_DIR = "clustered_faces"
-
     # List all cluster folders in the directory
     clusters = [
         folder
