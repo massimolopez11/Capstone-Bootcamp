@@ -41,9 +41,11 @@
     "python.languageServer": "Pylance",
     "python.linting.enabled": true,
     "python.linting.pylintEnabled": true,
-    // "editor.codeActionsOnSave": {
-    //     "source.organizeImports": true,
-    //     "source.fixAll": true
-    // }
+    "python.linting.pylintArgs": ["--generate-members"],
+    "pylint.args": ["--generate-members"],
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit",
+        "source.fixAll": "explicit"
+    }
     
 }

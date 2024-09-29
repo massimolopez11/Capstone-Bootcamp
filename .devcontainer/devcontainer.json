@@ -17,7 +17,7 @@
       ]
     }
   },
-  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; pip install --upgrade pip; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; pip3 install --user streamlit; [ -f torch_requirements.txt] && pip install --user torch_requirements.txt; [ -f dev_requirements.txt ] && pip install --user dev_requirements.txt; echo '✅ Packages installed and Requirements met'",
+  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; pip install --upgrade pip; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; echo '✅ Packages installed and Requirements met'",
   "portsAttributes": {
     "8501": {
       "label": "Application",
