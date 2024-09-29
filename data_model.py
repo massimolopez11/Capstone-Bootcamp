@@ -11,8 +11,7 @@ import numpy as np
 from img2vec_pytorch import Img2Vec
 from PIL import Image
 from sklearn.cluster import DBSCAN
-from sklearn.neighbors import NearestNeighbors
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 
 # from facenet_pytorch import InceptionResnetV1
 
@@ -72,8 +71,86 @@ class DataModels:
 
         # self.faces_vectors = np.concatenate(self.faces_vectors, axis=0)
 
-    def generate_faces(self, use_image_temp=False) -> None:
-        """Generate the faces from the photo_df"""
+    def generate_faces_dnn(
+        self, use_image_temp=False, confidence_threshold=0.5
+    ) -> None:
+        """Generate the faces from the image or the image_temp numpy arrays."""
+
+        # Empty the faces directory
+        if os.path.isdir("faces"):
+            shutil.rmtree("faces")
+            os.makedirs("faces")
+        else:
+            os.makedirs("faces")
+
+        # Setup dnn
+        # NOTE: These are pretrained models curtosy of OpenCV
+        # https://github.com/keyurr2/face-detection/blob/master/deploy.prototxt.txt
+        # https://github.com/keyurr2/face-detection/blob/master/face_detection_cnn.py
+
+        face_dnn = cv2.dnn.readNetFromCaffe(
+            "deploy.prototxt.txt", "res10_300x300_ssd_iter_140000.caffemodel"
+        )
+
+        for value in self.image_array if not use_image_temp else self.image_temp_array:
+            filename: str = value.replace("\\", "/")
+            filename_no_ext = filename[: filename.find(".")]
+            print(filename)
+
+            # Detect image
+            img = cv2.imread(filename)
+
+            # Get the width and height of the input image
+            (h, w) = img.shape[:2]
+
+            # Prepare the image as input for the DNN (300x300, mean subtraction, scale factor)
+            blob = cv2.dnn.blobFromImage(
+                cv2.resize(img, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
+            )
+
+            # Set the input to the network
+            face_dnn.setInput(blob)
+
+            # Forward pass: detect faces
+            detections = face_dnn.forward()
+
+            # Loop over the detections
+            for i in range(0, detections.shape[2]):
+                # Extract the confidence (probability) of the detection
+                confidence = detections[0, 0, i, 2]
+
+                # Filter out weak detections
+                if confidence > confidence_threshold:
+                    # Get the bounding box coordinates
+                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                    (startX, startY, endX, endY) = box.astype("int")
+
+                    # Ensure the bounding boxes fall within the dimensions of the frame
+                    startX = max(0, startX)
+                    startY = max(0, startY)
+                    endX = min(w, endX)
+                    endY = min(h, endY)
+
+                    # Extract the face region (ROI: Region of Interest)
+                    face = img[startY:endY, startX:endX]
+
+                    if not os.path.isdir(f"faces/{filename_no_ext}"):
+                        os.makedirs(f"faces/{filename_no_ext}")
+
+                    # Save the face as a new image
+                    face_filename = f"faces/{filename_no_ext}/face_{i+1}.jpg"
+                    cv2.imwrite(face_filename, face)
+                    print(f"Saved face {i+1} at {face_filename}")
+
+        # Create an array for all the images in the faces directory
+        self.faces_array = (
+            np.array(glob.glob("faces/images/**/*.*", recursive=True))
+            if not use_image_temp
+            else np.array(glob.glob("faces/images_temp/**/*.*", recursive=True))
+        )
+
+    def generate_faces_haar_classifier(self, use_image_temp=False) -> None:
+        """Generate the faces from the image or the image_temp numpy arrays."""
 
         # Empty the faces directory
         if os.path.isdir("faces"):
@@ -86,7 +163,6 @@ class DataModels:
         face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
-
         for value in self.image_array if not use_image_temp else self.image_temp_array:
             filename: str = value.replace("\\", "/")
             filename_no_ext = filename[: filename.find(".")]
@@ -94,6 +170,7 @@ class DataModels:
 
             # Detect the faces using grayscale images
             img = cv2.imread(filename)
+
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(
                 gray, scaleFactor=1.05, minNeighbors=5, minSize=(100, 100)
@@ -191,11 +268,22 @@ class DataModels:
 
         return (elbow_point, distances[elbow_point])
 
-    def dbscan_model(self, eps: float, min_samples):
-        """Generate DBSCAN clustering model"""
+    def dbscan_model(self, eps: float, min_samples, use_knn=False):
+        """Generate DBSCAN clustering model
+
+        Args:
+            eps: Distance to nearest cluster needed to generate dbscan model. This value
+              would come from the elbow point in the plot_k_distance method. I choose 
+              later to sutract this value by 2 since it gave better results.
+            min_samples: number of min samples needed to generate dbscan model.
+            use_knn: Optional if you datasets has too many outliers then use this.
+                After generating the dbscan it uses the knn model to find the closests
+                neighbours for any outliers. Defaults to False since allowing outliers
+                can produce more errors.
+        """
         print(f"Using esp and min sample values of ({eps, min_samples})")
 
-        self.dbscan = DBSCAN(eps=eps - 2, min_samples=min_samples, metric="euclidean")
+        self.dbscan = DBSCAN(eps=eps-2, min_samples=min_samples, metric="euclidean")
         self.clusters = self.dbscan.fit_predict(self.faces_vectors_x)
 
         print(len(set(self.clusters)))
@@ -227,6 +315,49 @@ class DataModels:
                   ({not_noise_num}/{(not_noise_num + noise_num)})"
         )
 
+        # Since there may be lots of outliers, use KNN to classify them into existing
+        # clusters by setting use_knn = True
+        if use_knn:
+            non_noise_indices = self.clusters != -1
+            X_non_noise = self.faces_vectors_x[non_noise_indices]
+            labels_non_noise = self.clusters[non_noise_indices]
+
+            # Train KNN on the non-noise points
+            knn = KNeighborsClassifier(n_neighbors=5)
+            knn.fit(X_non_noise, labels_non_noise)
+
+            # Classify the noise points
+            noise_indices = self.clusters == -1
+            X_noise = self.faces_vectors_x[noise_indices]
+            predicted_labels = knn.predict(X_noise)
+
+            # Update the labels for the noise points
+            self.clusters[noise_indices] = predicted_labels
+            print("Final cluster labels (after handling noise):", self.clusters)
+
+            noise_num = 0
+            not_noise_num = 0
+            clustered_faces: dict = {}
+            for i, label in enumerate(self.clusters):
+                if label != -1:  # Ignore noise/outliers
+                    if label not in clustered_faces:
+                        clustered_faces[label] = []
+                    clustered_faces[label].append(self.faces_vectors_x[i])
+                    print(f"({self.faces_array[i]}) Face {i+1} is Person {label}")
+                    not_noise_num += 1
+                else:
+                    print(
+                        f"({self.faces_array[i]}) Face {i+1} identified as noise/outlier"
+                    )
+                    noise_num += 1
+
+            print(
+                f"Found {len(set(self.clusters)) - (1 if -1 in self.clusters else 0)} clusters"
+            )
+            print(
+                f"Ratio of outliers = {not_noise_num/(not_noise_num + noise_num)} \
+                    ({not_noise_num}/{(not_noise_num + noise_num)})"
+            )
 
     def predict(self, dbscan_model: DBSCAN):
         """Only used for predicting the model. Note that the model has to be set

@@ -9,7 +9,7 @@ import streamlit as st
 from PIL import Image
 
 import tools
-from data_model import DataModels, LAST_DBSCAN_MODEL, LAST_KNN_MODEL
+from data_model import DataModels
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ if os.path.isdir(CLUSTER_DIR):
 else:
     os.makedirs(CLUSTER_DIR)
 
+IMAGES_DIR = "images"
 
 # Empty the temp images directory
 IMG_TEMP_DIR = "images_temp"
@@ -85,12 +86,30 @@ else:
                 f.write(image.getbuffer())
 
 
-predict_button = st.button(label="Start Image Recognition")
-train_button = st.button(
-    label="Train Your Own Model",
-    help="NOTE: This removes the pretrained model already generated. We have a \
-        pretrained model saved, If you would like to make your own feel free.",
-)
+col1, col2, col3 = st.columns(3)
+with col1:
+    predict_button = st.button(label="Start Image Recognition")
+with col2:
+    train_button = st.button(
+        label="Train Your Own Model",
+        help="NOTE: This removes the pretrained model already generated.",
+    )
+# with st.stylable_container(
+#     key="Upload_Data",
+#     css_styles="""
+#     button{
+#         display: flex;
+#         justify-content: flex-end;
+#         width: 100%;
+#     }
+#     """
+# ):
+with col3:
+    delete_images_button = st.button(
+        label="Delete images",
+        help="NOTE: This will remove all images that have been loaded to the site."
+    )
+
 
 # 1. Create the object
 dm = DataModels()
@@ -106,10 +125,10 @@ if predict_button:
         os.makedirs("clustered_faces")
     else:
         os.makedirs("clustered_faces")
-    
+
     # 2. Generate the faces
     with st.spinner("Generating faces from images..."):
-        dm.generate_faces(use_image_temp=True)
+        dm.generate_faces_dnn(use_image_temp=True)
 
     # 3. Create the image embeddings for each face
     with st.spinner("Creating the image embeddings from each face..."):
@@ -119,7 +138,7 @@ if predict_button:
 
     # 5.2 Predict Clusters
     with st.spinner("Predicting labels from DBSCAN clustering model..."):
-        print(f'Predictions: {dm.predict(st.session_state.dbscan_model)}')
+        print(f"Predictions: {dm.predict(st.session_state.dbscan_model)}")
 
     # 6. Create File tree for clusters
     with st.spinner("Creating file tree to group similar faces"):
@@ -134,8 +153,11 @@ if predict_button:
     ]
 
     # Display each cluster
-    for cluster in clusters:
-        st.header(f"Cluster: {cluster}")
+    for count, cluster in enumerate(clusters):
+        if int(cluster[cluster.find("_") + 1 :]) == -1:
+            st.header(f"Person: {count} (Outliers)")
+        else:
+            st.header(f"Person: {count}")
 
         # Get all images in this cluster
         cluster_folder = os.path.join(CLUSTER_DIR, cluster)
@@ -166,7 +188,7 @@ if train_button:
 
     # 2. Generate the faces
     with st.spinner("Generating faces from images..."):
-        dm.generate_faces()
+        dm.generate_faces_dnn()
 
     # 3. Create the image embeddings for each face
     with st.spinner("Creating the image embeddings from each face..."):
@@ -176,13 +198,13 @@ if train_button:
 
     # 4. Plot the elbow plot for analysis
     with st.spinner("Plotting the elbow plot for analysis..."):
-        min_samples = 2
+        min_samples = 3
         figure, eps = dm.plot_k_distance(min_samples)
         st.pyplot(figure)
 
     # 5.1 Generate DBSCAN
     with st.spinner("Generating DBSCAN clustering model for grouping similar faces"):
-        dm.dbscan_model(eps, min_samples)
+        dm.dbscan_model(eps, min_samples, use_knn=False)
         st.session_state.dbscan_model = dm.dbscan
 
     # 6. Create File tree for clusters
@@ -198,8 +220,11 @@ if train_button:
     ]
 
     # Display each cluster
-    for cluster in clusters:
-        st.header(f"Cluster: {cluster}")
+    for count, cluster in enumerate(clusters):
+        if int(cluster[cluster.find("_") + 1 :]) == -1:
+            st.header(f"Person: {count} (Outliers)")
+        else:
+            st.header(f"Person: {count}")
 
         # Get all images in this cluster
         cluster_folder = os.path.join(CLUSTER_DIR, cluster)
@@ -216,3 +241,10 @@ if train_button:
             # Display image in a column
             with cols[idx % 5]:  # This ensures 5 images per row
                 st.image(img, caption=image_file, use_column_width=True)
+
+if delete_images_button:
+    if os.path.isdir(IMAGES_DIR):
+        shutil.rmtree(IMAGES_DIR)
+        os.makedirs(IMAGES_DIR)
+    else:
+        os.makedirs(IMAGES_DIR)
